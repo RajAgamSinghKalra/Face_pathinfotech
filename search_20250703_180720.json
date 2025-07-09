@@ -1,0 +1,20 @@
+{
+  "query_image": "C:\\Users\\Agam\\Pictures\\me.jpg",
+  "num_faces": 1,
+  "threshold": 0.6,
+  "top_k": 100,
+  "timestamp": "2025-07-03T18:07:20.265923",
+  "results": [
+    {
+      "query_face_id": 0,
+      "query_bbox": [
+        151,
+        102,
+        403,
+        438
+      ],
+      "query_confidence": 0.8769795894622803,
+      "matches": []
+    }
+  ]
+}

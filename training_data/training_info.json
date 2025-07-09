@@ -1,0 +1,9 @@
+{
+  "timestamp": "2025-07-02T11:28:32.672644",
+  "num_samples": 15976,
+  "num_identities": 952,
+  "device": "privateuseone:0",
+  "directml_available": true,
+  "batch_size": 64,
+  "train_epochs": 1
+}
