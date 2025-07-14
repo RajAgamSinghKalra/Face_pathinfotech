@@ -195,7 +195,9 @@ def serve_static(path: str):
                     for row in reader:
                         if len(row) >= 2:
                             allowed.append(Path(row[1]).resolve().parent)
-                            break
+                        if len(row) >= 1:
+                            allowed.append(Path(row[0]).resolve().parent)
+                        break
             except Exception:
                 pass
 
