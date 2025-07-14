@@ -222,9 +222,11 @@ def startup_models():
             from insightface.utils.face_align import norm_crop
 
             def _embed(bgr112: np.ndarray) -> np.ndarray:
-                rgb = bgr112[..., ::-1]
-                v1 = emb.get_feat(rgb).astype(np.float32).ravel()
-                v2 = emb.get_feat(rgb[:, ::-1, :]).astype(np.float32).ravel()
+                """Return flip-augmented embedding for a 112x112 BGR face."""
+                face = cv2.resize(bgr112, (112, 112)) if bgr112.shape[:2] != (112, 112) else bgr112
+                v1 = emb.get_feat(face).astype(np.float32).ravel()
+                flip = cv2.flip(face, 1)
+                v2 = emb.get_feat(flip).astype(np.float32).ravel()
                 vec = v1 + v2
                 return vec / (np.linalg.norm(vec) + 1e-7)
 
@@ -232,7 +234,7 @@ def startup_models():
                 bgr = cv2.imread(img_path)
                 if bgr is None:
                     return []
-                faces = det.get(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), max_num=0)
+                faces = det.get(bgr, max_num=0)
                 res: list[Dict[str, Any]] = []
                 for i, f in enumerate(faces):
                     crop = norm_crop(bgr, f.kps, 112)

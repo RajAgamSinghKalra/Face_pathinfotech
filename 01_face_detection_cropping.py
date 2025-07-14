@@ -96,7 +96,8 @@ class Aligner:
         LOG.info("Using CPU (1024×1024)")
 
     def detect(self, img_bgr: np.ndarray):
-        return self.det.get(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), max_num=0)
+        """Detect faces in a BGR image using RetinaFace."""
+        return self.det.get(img_bgr, max_num=0)
 
     @staticmethod
     def crop(img_bgr: np.ndarray, kps5: np.ndarray) -> np.ndarray:
