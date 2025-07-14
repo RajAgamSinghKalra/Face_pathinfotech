@@ -79,9 +79,9 @@ export default function SearchPage() {
             similarity = Math.round(similarity * 10) / 10;
           }
           // Pass bbox from match if available
-          let bbox = undefined;
-          if (Array.isArray(m.bbox_x1) && m.bbox_x1.length === 4) {
-            bbox = m.bbox_x1;
+          let bbox: number[] | undefined = undefined;
+          if (Array.isArray((m as any).bbox) && (m as any).bbox.length === 4) {
+            bbox = (m as any).bbox as number[];
           } else if (
             typeof m.bbox_x1 === "number" &&
             typeof m.bbox_y1 === "number" &&
