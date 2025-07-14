@@ -17,6 +17,9 @@ from typing import Dict, Any, Iterable
 import numpy as np
 from tqdm import tqdm
 import oracledb
+import torch
+from torchvision import transforms
+from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
 
 # ─── optional OpenCV (Pillow fallback) ───────────────────────────────────
 try:
@@ -47,6 +50,21 @@ try:
 except Exception as e:
     print(f"⚠️  DirectML unavailable ({e}) – using CPU")
     _ARCFACE.prepare(ctx_id=-1)
+
+print("Loading FaceNet (InceptionResnetV1)…")
+_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+try:
+    _FACENET = InceptionResnetV1(pretrained="vggface2").to(_DEVICE).eval()
+    FACENET_TRANSFORM = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize((160, 160)),
+        transforms.ToTensor(),
+        fixed_image_standardization,
+    ])
+    print("✅ FaceNet loaded")
+except Exception as e:
+    print(f"⚠️  FaceNet unavailable: {e}")
+    _FACENET = None
 
 # ─── paths & constants ───────────────────────────────────────────────────
 ROOT     = Path(r"C:\Users\Agam\Downloads\intern\pathinfotech\face")
@@ -178,16 +196,29 @@ def aligned_crop(meta: Dict[str,Any]) -> np.ndarray | None:
     return cv2.imread(meta["cropped_face"])
 
 def embed_face(img_bgr: np.ndarray) -> np.ndarray | None:
-    """Return flip-augmented ArcFace embedding for a BGR crop."""
+    """Return combined ArcFace + FaceNet embedding for a BGR crop."""
     if img_bgr is None or img_bgr.size == 0:
         return None
-    face = cv2.resize(img_bgr, (112, 112)) if img_bgr.shape[:2] != (112, 112) else img_bgr
-    v1  = _ARCFACE.get_feat(face).astype(np.float32).ravel()
-    flip = cv2.flip(face, 1)
-    v2  = _ARCFACE.get_feat(flip).astype(np.float32).ravel()
-    vec = v1 + v2
+    # ArcFace 112x112 + horizontal flip
+    face_arc = cv2.resize(img_bgr, (112, 112)) if img_bgr.shape[:2] != (112, 112) else img_bgr
+    v1 = _ARCFACE.get_feat(face_arc).astype(np.float32).ravel()
+    v2 = _ARCFACE.get_feat(cv2.flip(face_arc, 1)).astype(np.float32).ravel()
+    arc_vec = v1 + v2
+    arc_vec /= (np.linalg.norm(arc_vec) + 1e-7)
+
+    # FaceNet 160x160
+    if _FACENET is not None:
+        face_fn = cv2.resize(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB), (160, 160))
+        tensor = FACENET_TRANSFORM(face_fn).unsqueeze(0).to(_DEVICE)
+        with torch.no_grad():
+            fn_vec = _FACENET(tensor).cpu().numpy().ravel()
+        fn_vec /= (np.linalg.norm(fn_vec) + 1e-7)
+        vec = arc_vec + fn_vec
+    else:
+        vec = arc_vec
+
     vec /= (np.linalg.norm(vec) + 1e-7)
-    return vec
+    return vec.astype(np.float32)
 
 # ─── CSV helpers ─────────────────────────────────────────────────────────
 INT_FIELDS = ("face_id","bbox_x1","bbox_y1","bbox_x2",
