@@ -79,7 +79,7 @@ async def search_image(
         try:
             for face in faces:
                 db.insert_query_vector(face["embedding"])
-                matches = db.search(top_k, threshold)
+                matches = db.search_auto(top_k, threshold)
                 rows.append({
                     "query_face_id":   face["face_id"],
                     "query_bbox":      face["bbox"],
