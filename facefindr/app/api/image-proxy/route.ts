@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
   const backendUrl = `http://localhost:8000/api/static?path=${encodeURIComponent(path)}`
   const resp = await fetch(backendUrl)
   if (!resp.ok) {
-    return new NextResponse('Image not found', { status: 404 })
+    const status = resp.status === 403 ? 403 : 404
+    return new NextResponse('Image not found', { status })
   }
   const contentType = resp.headers.get('content-type') || 'image/jpeg'
   const arrayBuffer = await resp.arrayBuffer()
