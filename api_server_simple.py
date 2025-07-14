@@ -107,6 +107,17 @@ class OracleVectorSearch:
             r["similarity"] = round(max(0.0, 1.0 - d) * 100, 2)
         return rows
 
+    def search_auto(self, k: int, thr: float,
+                    step: float = 0.05, max_thr: float = 0.8
+                    ) -> List[Dict[str, Any]]:
+        """Search with progressively larger threshold until matches found."""
+        results = self.search(k, thr)
+        cur_thr = thr
+        while not results and cur_thr < max_thr:
+            cur_thr = round(cur_thr + step, 3)
+            results = self.search(k, cur_thr)
+        return results
+
     def close(self):
         self.cur.close(); self.con.close()
 
