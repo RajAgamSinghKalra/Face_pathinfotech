@@ -169,8 +169,18 @@ def health():
 
 @app.get("/api/static", response_class=FileResponse)
 def serve_static(path: str):
-    allowed = [(ROOT_DIR / "cropped_faces").resolve(),
-               (ROOT_DIR / "dataset").resolve()]
+    """Serve images only from explicitly allowed directories."""
+    allowed = [
+        (ROOT_DIR / "cropped_faces").resolve(),
+        (ROOT_DIR / "dataset").resolve(),
+    ]
+
+    extra = os.getenv("EXTRA_STATIC_ROOTS")
+    if extra:
+        for root in extra.split(os.pathsep):
+            if root:
+                allowed.append(Path(root).resolve())
+
     p = Path(path).resolve()
     if not any(p.is_relative_to(root) for root in allowed):
         return JSONResponse(status_code=403, content={"error": "Forbidden"})

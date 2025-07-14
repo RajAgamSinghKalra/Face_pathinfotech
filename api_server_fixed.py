@@ -146,13 +146,18 @@ async def search_image(
 
 @app.get("/api/static", response_class=FileResponse, summary="Serve safe static files")
 def serve_static(path: str):
-    """
-    Only files within *cropped_faces* or *dataset* are allowed.
-    """
+    """Serve files from allowed directories only."""
     allowed_roots: List[Path] = [
         (HERE / "cropped_faces").resolve(),
-        (HERE / "dataset").resolve()
+        (HERE / "dataset").resolve(),
     ]
+
+    extra = os.getenv("EXTRA_STATIC_ROOTS")
+    if extra:
+        for r in extra.split(os.pathsep):
+            if r:
+                allowed_roots.append(Path(r).resolve())
+
     abs_path = Path(path).resolve()
     if not any(abs_path.is_relative_to(root) for root in allowed_roots):
         return JSONResponse(status_code=403, content={"error": "Forbidden"})
