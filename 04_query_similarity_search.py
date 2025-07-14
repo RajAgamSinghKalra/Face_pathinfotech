@@ -17,6 +17,9 @@ import numpy as np
 from insightface.app import FaceAnalysis
 from insightface.model_zoo import get_model
 import oracledb
+import torch
+from torchvision import transforms
+from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
 
 # ─── Configuration ───
 ORACLE_DSN      = "localhost:1521/FREEPDB1"
@@ -59,6 +62,21 @@ app.prepare(ctx_id=0, det_size=(640, 640))
 _ARCFACE = get_model("buffalo_l")
 _ARCFACE.prepare(ctx_id=-1)
 
+log.info("Loading FaceNet (InceptionResnetV1)…")
+_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+try:
+    _FACENET = InceptionResnetV1(pretrained="vggface2").to(_DEVICE).eval()
+    FACENET_TRANSFORM = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize((160, 160)),
+        transforms.ToTensor(),
+        fixed_image_standardization,
+    ])
+    log.info("FaceNet loaded")
+except Exception as e:
+    log.warning("FaceNet unavailable: %s", e)
+    _FACENET = None
+
 # Pre-defined reference 5 landmarks for 112x112 ArcFace alignment
 REF_LANDMARKS = np.array([
     [38.2946, 51.6963],   # left eye
@@ -78,15 +96,26 @@ def align_face(img: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
 
 
 def embed_face(face_img: np.ndarray) -> np.ndarray:
-    """Generate a normalized 512-D embedding for the face image using flip augmentation."""
-    face = cv2.resize(face_img, (112, 112)) if face_img.shape[:2] != (112, 112) else face_img
-    emb1 = _ARCFACE.get_feat(face).flatten()
-    flip_face = cv2.flip(face, 1)
-    emb2 = _ARCFACE.get_feat(flip_face).flatten()
-    emb = emb1 + emb2
-    emb = emb.astype(np.float32)
-    emb /= (np.linalg.norm(emb) + 1e-7)
-    return emb
+    """Generate a normalized embedding using ArcFace and FaceNet ensemble."""
+    face_arc = cv2.resize(face_img, (112, 112)) if face_img.shape[:2] != (112, 112) else face_img
+    a1 = _ARCFACE.get_feat(face_arc).flatten()
+    a2 = _ARCFACE.get_feat(cv2.flip(face_arc, 1)).flatten()
+    arc_vec = a1 + a2
+    arc_vec /= (np.linalg.norm(arc_vec) + 1e-7)
+
+    if _FACENET is not None:
+        face_fn = cv2.resize(cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB), (160, 160))
+        tensor = FACENET_TRANSFORM(face_fn).unsqueeze(0).to(_DEVICE)
+        with torch.no_grad():
+            fn_vec = _FACENET(tensor).cpu().numpy().ravel()
+        fn_vec /= (np.linalg.norm(fn_vec) + 1e-7)
+        vec = arc_vec + fn_vec
+    else:
+        vec = arc_vec
+
+    vec = vec.astype(np.float32)
+    vec /= (np.linalg.norm(vec) + 1e-7)
+    return vec
 
 
 class OracleVectorSearch:
