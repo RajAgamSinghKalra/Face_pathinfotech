@@ -8,10 +8,9 @@ import ResultsGallery from "@/components/results-gallery"
 import type { SearchResult } from "@/types"
 
 export default function Home() {
-  const [searchId, setSearchId] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
-  const [results, setResults] = useState<SearchResult[]>([])
   const [isComplete, setIsComplete] = useState(false)
+  const [results, setResults] = useState<SearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const handleFileUpload = async (file: File) => {
@@ -20,29 +19,22 @@ export default function Home() {
     setResults([])
     setIsComplete(false)
 
-    const formData = new FormData()
-    formData.append("file", file)
-
     try {
-      // Call the real backend API
+      const formData = new FormData()
+      formData.append("file", file)
       const apiUrl = `http://${window.location.hostname}:8000/api/search`
       const res = await fetch(apiUrl, {
         method: "POST",
         body: formData,
       })
-
       let data
       try {
         data = await res.json()
       } catch (err) {
         throw new Error("Could not parse response from server.")
       }
+      if (!res.ok) throw new Error(data.error || data.message || "Unknown error")
 
-      if (!res.ok) {
-        throw new Error(data.error || data.message || "Unknown error")
-      }
-
-      // Map backend response to SearchResult[]
       const seen = new Set()
       const mapped: SearchResult[] = (data.results || []).flatMap((face: any) => {
         return (face.matches || []).map((m: any) => {
@@ -50,11 +42,9 @@ export default function Home() {
           if (seen.has(uniqueKey)) return null
           seen.add(uniqueKey)
 
-          // Use the backend's relative path directly
           let thumb_url = m.cropped_face_path || "/placeholder-user.jpg"
           let full_url = m.original_image || m.cropped_face_path || ""
-          
-          // Use Next.js proxy route for images
+
           if (thumb_url && !thumb_url.startsWith("http")) {
             thumb_url = `/api/image-proxy?path=${encodeURIComponent(thumb_url)}`
           }
@@ -62,15 +52,40 @@ export default function Home() {
             full_url = `/api/image-proxy?path=${encodeURIComponent(full_url)}`
           }
 
-          // Calculate similarity from distance
           let similarity = 0
           if (typeof m.dist === "number") {
-            similarity = Math.max(0, Math.min(100, ((1 - m.dist) * 100)))
+            similarity = Math.max(0, Math.min(100, (1 - m.dist) * 100))
             similarity = Math.round(similarity * 10) / 10
           }
 
-          // Extract file name from cropped_face_path
+          let bbox: number[] | undefined = undefined
+          if (Array.isArray(m.bbox_x1) && m.bbox_x1.length === 4) {
+            bbox = m.bbox_x1
+          } else if (
+            typeof m.bbox_x1 === "number" &&
+            typeof m.bbox_y1 === "number" &&
+            typeof m.bbox_x2 === "number" &&
+            typeof m.bbox_y2 === "number"
+          ) {
+            bbox = [m.bbox_x1, m.bbox_y1, m.bbox_x2, m.bbox_y2]
+          }
+
           let file_name = m.cropped_face_path ? m.cropped_face_path.split(/[\\/]/).pop() : ""
+
+          let hash = ""
+          if (m.hash) {
+            hash = m.hash
+          } else if (m.metadata) {
+            let metaObj = m.metadata
+            if (typeof metaObj === "string") {
+              try {
+                metaObj = JSON.parse(metaObj)
+              } catch {}
+            }
+            if (metaObj && typeof metaObj === "object" && metaObj.hash) {
+              hash = metaObj.hash
+            }
+          }
 
           return {
             id: m.id?.toString() || Math.random().toString(),
@@ -81,26 +96,24 @@ export default function Home() {
               file_path: m.original_image || "",
               file_name,
               timestamp: m.metadata?.timestamp || new Date().toISOString(),
-              hash: m.hash || "",
+              hash,
+              bbox,
             },
           }
         }).filter(Boolean)
       })
 
-      setResults(mapped)
+      const deduped = mapped.filter((_, i) => i % 2 === 0)
+      setResults(deduped)
       setIsComplete(true)
-      setSearchId(`search_${Date.now()}`)
-    } catch (error: any) {
-      console.error("Upload failed:", error)
-      setError(error.message || "Failed to connect to backend API. Make sure the backend server is running on port 8000.")
+    } catch (err: any) {
+      setError(err.message || "Failed to connect to backend API.")
     } finally {
       setIsUploading(false)
     }
   }
 
   const handleReset = () => {
-    setSearchId(null)
-    setIsUploading(false)
     setResults([])
     setIsComplete(false)
     setError(null)
@@ -108,21 +121,27 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0D1B2A] to-[#1B263B]">
-      {!searchId && !isUploading && <HeroSection onFileUpload={handleFileUpload} />}
+      {!isUploading && !isComplete && <HeroSection onFileUpload={handleFileUpload} />}
 
-      {(isUploading || searchId) && (
+      {isUploading && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="container mx-auto px-4 py-8"
         >
-          {error && (
-            <div className="bg-red-500 text-white p-4 rounded-lg mb-4">
-              {error}
-            </div>
-          )}
-          {isUploading && <UploadProgress />}
-          {results.length > 0 && <ResultsGallery results={results} isComplete={isComplete} onReset={handleReset} />}
+          {error && <div className="bg-red-500 text-white p-4 rounded-lg mb-4">{error}</div>}
+          <UploadProgress />
+        </motion.div>
+      )}
+
+      {!isUploading && isComplete && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="container mx-auto px-4 py-8"
+        >
+          {error && <div className="bg-red-500 text-white p-4 rounded-lg mb-4">{error}</div>}
+          <ResultsGallery results={results} isComplete={isComplete} onReset={handleReset} />
         </motion.div>
       )}
     </div>
