@@ -52,7 +52,7 @@ def embed_faces(img_path: str):
     out = []
     for box in boxes:
         x1, y1, x2, y2 = map(int, box)
-        crop = rgb[y1:y2, x1:x2]
+        crop = bgr[y1:y2, x1:x2]
         if crop.size == 0:
             continue
         crop = cv2.resize(crop, (112, 112))
