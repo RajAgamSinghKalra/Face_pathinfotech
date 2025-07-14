@@ -256,6 +256,14 @@ END;
    DETECTION_CONFIDENCE = 0.5  # Lower for more faces
    ```
 
+5. **Thumbnails return 403**
+   ```bash
+   # Allow your cropped_faces directory
+   set CROPPED_FACES_DIR=C:\path\to\face\cropped_faces
+   # or
+   set EXTRA_STATIC_ROOTS=C:\path\to\face\cropped_faces
+   ```
+
 ### Logging
 All scripts generate detailed logs in the `logs/` directory:
 - `face_detection_YYYYMMDD_HHMMSS.log`
