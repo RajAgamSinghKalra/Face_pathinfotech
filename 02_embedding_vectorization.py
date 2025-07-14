@@ -178,11 +178,13 @@ def aligned_crop(meta: Dict[str,Any]) -> np.ndarray | None:
     return cv2.imread(meta["cropped_face"])
 
 def embed_face(img_bgr: np.ndarray) -> np.ndarray | None:
+    """Return flip-augmented ArcFace embedding for a BGR crop."""
     if img_bgr is None or img_bgr.size == 0:
         return None
-    rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    v1  = _ARCFACE.get_feat(rgb).astype(np.float32).ravel()
-    v2  = _ARCFACE.get_feat(rgb[:, ::-1, :]).astype(np.float32).ravel()
+    face = cv2.resize(img_bgr, (112, 112)) if img_bgr.shape[:2] != (112, 112) else img_bgr
+    v1  = _ARCFACE.get_feat(face).astype(np.float32).ravel()
+    flip = cv2.flip(face, 1)
+    v2  = _ARCFACE.get_feat(flip).astype(np.float32).ravel()
     vec = v1 + v2
     vec /= (np.linalg.norm(vec) + 1e-7)
     return vec
