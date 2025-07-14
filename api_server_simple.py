@@ -181,6 +181,24 @@ def serve_static(path: str):
             if root:
                 allowed.append(Path(root).resolve())
 
+    crop_env = os.getenv("CROPPED_FACES_DIR")
+    if crop_env:
+        allowed.append(Path(crop_env).resolve())
+    else:
+        meta_csv = ROOT_DIR / "face_metadata.csv"
+        if meta_csv.exists():
+            try:
+                import csv
+                with meta_csv.open(newline="", encoding="utf-8") as fh:
+                    reader = csv.reader(fh)
+                    next(reader, None)
+                    for row in reader:
+                        if len(row) >= 2:
+                            allowed.append(Path(row[1]).resolve().parent)
+                            break
+            except Exception:
+                pass
+
     p = Path(path).resolve()
     if not any(p.is_relative_to(root) for root in allowed):
         return JSONResponse(status_code=403, content={"error": "Forbidden"})
