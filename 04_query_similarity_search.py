@@ -165,6 +165,17 @@ class OracleVectorSearch:
         cols = [d[0].lower() for d in self.cur.description]
         return [dict(zip(cols, row)) for row in self.cur]
 
+    def search_auto(self, k: int, thr: float,
+                    step: float = 0.05, max_thr: float = 0.8
+                    ) -> List[Dict[str, Any]]:
+        """Search with progressively larger threshold until matches found."""
+        results = self.search(k, thr)
+        cur_thr = thr
+        while not results and cur_thr < max_thr:
+            cur_thr = round(cur_thr + step, 3)
+            results = self.search(k, cur_thr)
+        return results
+
 
 def detect_and_embed(image_path: str) -> List[Dict[str, Any]]:
     img_bgr = cv2.imread(image_path)
@@ -192,6 +203,9 @@ def detect_and_embed(image_path: str) -> List[Dict[str, Any]]:
         })
     log.info("Detected %d face(s) in %s", len(results), image_path)
     return results
+
+# Expose helper for API modules
+process_query_image = detect_and_embed
 
 
 def pretty_print(payload: Dict[str, Any]) -> None:
@@ -236,7 +250,7 @@ def main() -> None:
         results = []
         for f in faces:
             _ = db.insert_query_vector(f["embedding"])
-            matches = db.search(args.top_k, args.threshold)
+            matches = db.search_auto(args.top_k, args.threshold)
             results.append({
                 "query_face_id": f["face_id"],
                 "query_bbox": f["bbox"],
