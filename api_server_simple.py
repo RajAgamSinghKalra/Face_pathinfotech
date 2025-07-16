@@ -19,6 +19,11 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
+# Additional ML imports for FaceNet ensemble
+import torch
+from torchvision import transforms
+from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
+
 # ─── Oracle / search settings ──────────────────────────────────────────
 ORACLE_DSN        = "localhost:1521/FREEPDB1"
 ORACLE_USER       = "system"
@@ -258,18 +263,47 @@ def startup_models():
                             provider_options=opts)
             emb.prepare(ctx_id=0 if tag == "GPU" else -1)
 
+            # Load FaceNet (optional) on the same device as ArcFace
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            try:
+                facenet = InceptionResnetV1(pretrained="vggface2").to(device).eval()
+                fn_transform = transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.Resize((160, 160)),
+                    transforms.ToTensor(),
+                    fixed_image_standardization,
+                ])
+                log.info("FaceNet model loaded")
+            except Exception as e:
+                log.warning("FaceNet unavailable: %s", e)
+                facenet = None
+                fn_transform = None
+
             # helper functions (kept small)
             import cv2
             from insightface.utils.face_align import norm_crop
 
             def _embed(bgr112: np.ndarray) -> np.ndarray:
-                """Return flip-augmented embedding for a 112x112 BGR face."""
+                """Return ArcFace + optional FaceNet embedding for a BGR face."""
                 face = cv2.resize(bgr112, (112, 112)) if bgr112.shape[:2] != (112, 112) else bgr112
                 v1 = emb.get_feat(face).astype(np.float32).ravel()
                 flip = cv2.flip(face, 1)
                 v2 = emb.get_feat(flip).astype(np.float32).ravel()
-                vec = v1 + v2
-                return vec / (np.linalg.norm(vec) + 1e-7)
+                arc_vec = v1 + v2
+                arc_vec /= (np.linalg.norm(arc_vec) + 1e-7)
+
+                if facenet is not None and fn_transform is not None:
+                    rgb = cv2.cvtColor(cv2.resize(bgr112, (160, 160)), cv2.COLOR_BGR2RGB)
+                    tensor = fn_transform(rgb).unsqueeze(0).to(device)
+                    with torch.no_grad():
+                        fn_vec = facenet(tensor).cpu().numpy().ravel()
+                    fn_vec /= (np.linalg.norm(fn_vec) + 1e-7)
+                    vec = arc_vec + fn_vec
+                else:
+                    vec = arc_vec
+
+                vec /= (np.linalg.norm(vec) + 1e-7)
+                return vec.astype(np.float32)
 
             def _process(img_path: str) -> List[Dict[str, Any]]:
                 bgr = cv2.imread(img_path)
@@ -291,7 +325,11 @@ def startup_models():
 
             pipeline["process"] = _process
             pipeline["ready"]   = True
-            log.info("✅ RetinaFace + ArcFace ready on %s", tag)
+            log.info(
+                "✅ RetinaFace + ArcFace%s ready on %s",
+                " + FaceNet" if facenet is not None else "",
+                tag,
+            )
             return
 
         except Exception as e:
