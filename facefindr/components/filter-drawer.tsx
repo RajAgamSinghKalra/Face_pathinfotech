@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Download, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 
 interface FilterDrawerProps {
@@ -12,9 +11,34 @@ interface FilterDrawerProps {
   onClose: () => void
   similarityThreshold: number
   onSimilarityChange: (value: number) => void
+  dateFrom: string | null
+  dateTo: string | null
+  onDateFromChange: (value: string | null) => void
+  onDateToChange: (value: string | null) => void
+  onExportCSV: () => void
+  onDownloadZip: () => void
+  onHighMatch: () => void
+  onRecent: () => void
+  onThisYear: () => void
+  onClearAll: () => void
 }
 
-export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onSimilarityChange }: FilterDrawerProps) {
+export default function FilterDrawer({
+  isOpen,
+  onClose,
+  similarityThreshold,
+  onSimilarityChange,
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
+  onExportCSV,
+  onDownloadZip,
+  onHighMatch,
+  onRecent,
+  onThisYear,
+  onClearAll,
+}: FilterDrawerProps) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -72,6 +96,8 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                     <Label className="text-gray-400 text-xs">From</Label>
                     <input
                       type="date"
+                      value={dateFrom || ""}
+                      onChange={(e) => onDateFromChange(e.target.value || null)}
                       className="w-full mt-1 px-3 py-2 bg-[#0D1B2A] border border-gray-600 rounded-lg text-white text-sm focus:border-[#00A6FB] focus:outline-none"
                     />
                   </div>
@@ -79,19 +105,12 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                     <Label className="text-gray-400 text-xs">To</Label>
                     <input
                       type="date"
+                      value={dateTo || ""}
+                      onChange={(e) => onDateToChange(e.target.value || null)}
                       className="w-full mt-1 px-3 py-2 bg-[#0D1B2A] border border-gray-600 rounded-lg text-white text-sm focus:border-[#00A6FB] focus:outline-none"
                     />
                   </div>
                 </div>
-              </div>
-
-              {/* Group by Person */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-white text-sm font-medium">Group by Person</Label>
-                  <p className="text-gray-400 text-xs mt-1">Cluster duplicate faces</p>
-                </div>
-                <Switch />
               </div>
 
               {/* Export Options */}
@@ -100,6 +119,7 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                 <div className="space-y-3">
                   <Button
                     variant="outline"
+                    onClick={onExportCSV}
                     className="w-full justify-start border-gray-600 text-gray-300 hover:bg-[#0D1B2A] bg-transparent"
                   >
                     <FileText className="w-4 h-4 mr-2" />
@@ -107,6 +127,7 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                   </Button>
                   <Button
                     variant="outline"
+                    onClick={onDownloadZip}
                     className="w-full justify-start border-gray-600 text-gray-300 hover:bg-[#0D1B2A] bg-transparent"
                   >
                     <Download className="w-4 h-4 mr-2" />
@@ -122,6 +143,7 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={onHighMatch}
                     className="border-gray-600 text-gray-300 hover:bg-[#0D1B2A] bg-transparent"
                   >
                     High Match
@@ -129,6 +151,7 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={onRecent}
                     className="border-gray-600 text-gray-300 hover:bg-[#0D1B2A] bg-transparent"
                   >
                     Recent
@@ -136,6 +159,7 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={onThisYear}
                     className="border-gray-600 text-gray-300 hover:bg-[#0D1B2A] bg-transparent"
                   >
                     This Year
@@ -143,6 +167,7 @@ export default function FilterDrawer({ isOpen, onClose, similarityThreshold, onS
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={onClearAll}
                     className="border-gray-600 text-gray-300 hover:bg-[#0D1B2A] bg-transparent"
                   >
                     Clear All

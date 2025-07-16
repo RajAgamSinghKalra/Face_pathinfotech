@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import JSZip from "jszip"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowLeft, Filter, Download, Calendar, Hash, Folder } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,8 +20,88 @@ export default function ResultsGallery({ results, isComplete, onReset }: Results
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [similarityThreshold, setSimilarityThreshold] = useState(70)
+  const [dateFrom, setDateFrom] = useState<string | null>(null)
+  const [dateTo, setDateTo] = useState<string | null>(null)
 
-  const filteredResults = results.filter((result) => result.similarity >= similarityThreshold)
+  const handleExportCSV = () => {
+    const headers = [
+      "file_name",
+      "file_path",
+      "similarity",
+      "timestamp",
+      "hash",
+    ]
+    const rows = filteredResults.map((r) => [
+      r.metadata.file_name || "",
+      r.metadata.file_path,
+      r.similarity.toString(),
+      r.metadata.timestamp,
+      r.metadata.hash,
+    ])
+    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n")
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "results.csv"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleDownloadZip = async () => {
+    const zip = new JSZip()
+    for (const r of filteredResults) {
+      try {
+        const res = await fetch(r.full_url)
+        const blob = await res.blob()
+        const name =
+          r.metadata.file_name ||
+          r.full_url.split("/").pop()?.split("?")[0] ||
+          `${r.id}.jpg`
+        zip.file(name, blob)
+      } catch {}
+    }
+    const content = await zip.generateAsync({ type: "blob" })
+    const url = URL.createObjectURL(content)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "images.zip"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleHighMatch = () => setSimilarityThreshold(90)
+  const handleRecent = () => {
+    const now = new Date()
+    const past = new Date()
+    past.setDate(now.getDate() - 30)
+    setDateFrom(past.toISOString().slice(0, 10))
+    setDateTo(now.toISOString().slice(0, 10))
+  }
+  const handleThisYear = () => {
+    const now = new Date()
+    const year = now.getFullYear()
+    setDateFrom(`${year}-01-01`)
+    setDateTo(`${year}-12-31`)
+  }
+  const handleClearAll = () => {
+    setSimilarityThreshold(70)
+    setDateFrom(null)
+    setDateTo(null)
+  }
+
+  const filteredResults = results
+    .filter((result) => result.similarity >= similarityThreshold)
+    .filter((result) => {
+      const ts = new Date(result.metadata.timestamp)
+      if (dateFrom && ts < new Date(dateFrom)) return false
+      if (dateTo && ts > new Date(dateTo)) return false
+      return true
+    })
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -139,6 +220,16 @@ export default function ResultsGallery({ results, isComplete, onReset }: Results
         onClose={() => setShowFilters(false)}
         similarityThreshold={similarityThreshold}
         onSimilarityChange={setSimilarityThreshold}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={setDateFrom}
+        onDateToChange={setDateTo}
+        onExportCSV={handleExportCSV}
+        onDownloadZip={handleDownloadZip}
+        onHighMatch={handleHighMatch}
+        onRecent={handleRecent}
+        onThisYear={handleThisYear}
+        onClearAll={handleClearAll}
       />
     </div>
   )
