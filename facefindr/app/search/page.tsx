@@ -64,7 +64,18 @@ export default function SearchPage() {
           seen.add(uniqueKey);
           // Use the backend's relative path directly
           let thumb_url = m.cropped_face_path || "/placeholder-user.jpg";
-          let full_url = m.original_image || m.cropped_face_path || "";
+          let full_url = m.original_image || "";
+          if (!full_url && m.metadata) {
+            try {
+              const meta = typeof m.metadata === "string" ? JSON.parse(m.metadata) : m.metadata;
+              if (meta && typeof meta.original_image === "string") {
+                full_url = meta.original_image;
+              }
+            } catch {}
+          }
+          if (!full_url) {
+            full_url = m.cropped_face_path || "";
+          }
           // Instead of rewriting to /api/static, use a Next.js proxy route
           if (thumb_url && !thumb_url.startsWith("http")) {
             thumb_url = `/api/image-proxy?path=${encodeURIComponent(thumb_url)}`;
@@ -113,7 +124,19 @@ export default function SearchPage() {
             full_url,
             similarity,
             metadata: {
-              file_path: m.original_image || "",
+              file_path:
+                m.original_image ||
+                (() => {
+                  if (m.metadata) {
+                    try {
+                      const meta = typeof m.metadata === "string" ? JSON.parse(m.metadata) : m.metadata;
+                      if (meta && typeof meta.original_image === "string") {
+                        return meta.original_image;
+                      }
+                    } catch {}
+                  }
+                  return "";
+                })(),
               file_name,
               timestamp: m.metadata?.timestamp || new Date().toISOString(),
               hash,
