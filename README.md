@@ -153,7 +153,7 @@ DETECTION_CONFIDENCE = 0.8
 FACE_SIZE = (112, 112)
 
 # Similarity search
-SIMILARITY_THRESHOLD = 0.6
+SIMILARITY_THRESHOLD = 0.7
 TOP_K_RESULTS = 50
 ```
 
@@ -305,7 +305,7 @@ Upload an image and search for similar faces.
 ```bash
 curl -X POST "http://localhost:8000/api/face-search" \
   -F "file=@query_image.jpg" \
-  -F "similarity_threshold=0.6" \
+  -F "similarity_threshold=0.7" \
   -F "top_k=50"
 ```
 
