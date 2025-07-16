@@ -210,9 +210,12 @@ def serve_static(path: str):
                     next(reader, None)
                     for row in reader:
                         if len(row) >= 2:
+                            # include entire cropped_faces directory
                             allowed.append(Path(row[1]).resolve().parent)
                         if len(row) >= 1:
-                            allowed.append(Path(row[0]).resolve().parent)
+                            # include dataset root two levels above first entry
+                            orig = Path(row[0]).resolve()
+                            allowed.append(orig.parents[1] if len(orig.parents) > 1 else orig.parent)
                         break
             except Exception:
                 pass
