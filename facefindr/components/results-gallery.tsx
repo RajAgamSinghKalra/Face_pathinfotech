@@ -18,7 +18,7 @@ interface ResultsGalleryProps {
 export default function ResultsGallery({ results, isComplete, onReset }: ResultsGalleryProps) {
   const [selectedResult, setSelectedResult] = useState<SearchResult | null>(null)
   const [showFilters, setShowFilters] = useState(false)
-  const [similarityThreshold, setSimilarityThreshold] = useState(60)
+  const [similarityThreshold, setSimilarityThreshold] = useState(70)
 
   const filteredResults = results.filter((result) => result.similarity >= similarityThreshold)
 
