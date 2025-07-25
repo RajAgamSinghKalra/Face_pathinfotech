@@ -213,7 +213,8 @@ def embed_face(img_bgr: np.ndarray) -> np.ndarray | None:
         with torch.no_grad():
             fn_vec = _FACENET(tensor).cpu().numpy().ravel()
         fn_vec /= (np.linalg.norm(fn_vec) + 1e-7)
-        vec = arc_vec + fn_vec
+        # weighted combination – emphasise ArcFace contribution
+        vec = 0.75 * arc_vec + 0.25 * fn_vec
     else:
         vec = arc_vec
 
