@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 from insightface.model_zoo import get_model
+from insightface.utils.face_align import norm_crop
 import oracledb
 import torch
 from torchvision import transforms
@@ -25,7 +26,8 @@ from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
 ORACLE_DSN      = "localhost:1521/FREEPDB1"
 ORACLE_USER     = "system"
 ORACLE_PASSWORD = "1123"
-SIMILARITY_THRESHOLD = 0.30  # Cosine distance threshold (0.30 = 70% similarity)
+# Slightly stricter default threshold (cosine distance) for fewer false positives
+SIMILARITY_THRESHOLD = 0.25  # 0.25 distance → 0.75 similarity
 TOP_K_RESULTS        = 100
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -88,11 +90,9 @@ REF_LANDMARKS = np.array([
 
 
 def align_face(img: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
-    """Warp the face image to the standard 112x112 alignment using 5 landmarks."""
+    """Align face using InsightFace's canonical norm_crop."""
     assert landmarks.shape == (5, 2), "landmarks must be 5x2"
-    M, _ = cv2.estimateAffinePartial2D(landmarks, REF_LANDMARKS, method=cv2.LMEDS)
-    aligned = cv2.warpAffine(img, M, (112, 112), borderValue=0.0)
-    return aligned
+    return norm_crop(img, landmarks, 112)
 
 
 def embed_face(face_img: np.ndarray) -> np.ndarray:
@@ -109,7 +109,8 @@ def embed_face(face_img: np.ndarray) -> np.ndarray:
         with torch.no_grad():
             fn_vec = _FACENET(tensor).cpu().numpy().ravel()
         fn_vec /= (np.linalg.norm(fn_vec) + 1e-7)
-        vec = arc_vec + fn_vec
+        # weighted ensemble – ArcFace contributes more to final embedding
+        vec = 0.75 * arc_vec + 0.25 * fn_vec
     else:
         vec = arc_vec
 
@@ -166,7 +167,7 @@ class OracleVectorSearch:
         return [dict(zip(cols, row)) for row in self.cur]
 
     def search_auto(self, k: int, thr: float,
-                    step: float = 0.05, max_thr: float = 0.8
+                    step: float = 0.05, max_thr: float = 0.5
                     ) -> List[Dict[str, Any]]:
         """Search with progressively larger threshold until matches found."""
         results = self.search(k, thr)
