@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-01_face_detection_cropping.py  –  ArcFace-ready aligned crops with optional 106-point landmarks
+01_face_detection_cropping.py  –  ArcFace-ready aligned crops with optional 106‑point landmarks
 ──────────────────────────────────────────────────────────────────────────
-* RetinaFace detection + 5-point (always) & 106-point (when available) landmark extraction
-* Align via 5-point norm_crop → 112×112 BGR
+* RetinaFace detection + 5‑point (always) & 106‑point (when available) landmark extraction
+* Align via 5‑point norm_crop → 112×112 BGR
 * Save crops + CSV metadata (includes both landmark sets)
 * Uses DirectML on AMD GPU @640×640, fallback to CPU @1024×1024
 """
@@ -46,7 +46,9 @@ except ImportError as e:
     sys.exit(1)
 
 # ───────── USER CONFIG ─────────
-DATASET_PATH  = r"C:\Users\Agam\Downloads\intern\pathinfotech\face\dataset"
+# Point to the “dataset” folder that lives next to this script
+SCRIPT_DIR    = Path(__file__).resolve().parent
+DATASET_PATH  = str((SCRIPT_DIR / "dataset").resolve())
 OUTPUT_PATH   = r"C:\Users\Agam\Downloads\intern\pathinfotech\face\cropped_faces"
 METADATA_FILE = "face_metadata.csv"
 CONF_THR      = 0.50   # lower threshold for harder/angled faces
