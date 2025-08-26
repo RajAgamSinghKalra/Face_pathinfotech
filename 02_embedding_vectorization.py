@@ -74,8 +74,23 @@ ORACLE_DSN  = os.getenv("ORACLE_DSN",  "localhost:1521/FREEPDB1")
 ORACLE_USER = os.getenv("ORACLE_USER", "system")
 ORACLE_PWD  = os.getenv("ORACLE_PWD",  "1123")
 
-TABLESPACE  = "VECTOR_TS"
+# Optional Oracle tablespace for new objects.  Oracle's VECTOR type
+# cannot reside in the SYSTEM tablespace (non-ASSM), so default to
+# USERS when no tablespace is provided or when SYSTEM is explicitly set.
+_raw_ts = os.getenv("TABLESPACE")
+if _raw_ts is None:
+    TABLESPACE = "USERS"
+else:
+    _raw_ts = _raw_ts.strip()
+    if not _raw_ts:
+        TABLESPACE = None
+    else:
+        TABLESPACE = "USERS" if _raw_ts.upper() == "SYSTEM" else _raw_ts
+
 BATCH_SIZE  = 1_000
+
+# Build optional TABLESPACE clause once
+TS_CLAUSE = f"TABLESPACE {TABLESPACE}" if TABLESPACE else ""
 
 # ─── DDL (unchanged, includes landmark cols) ─────────────────────────────
 CREATE_TABLE_SQL = f"""
@@ -94,7 +109,7 @@ CREATE TABLE faces (
   landmarks_106        CLOB,
   processing_timestamp TIMESTAMP,
   metadata             CLOB
-) TABLESPACE {TABLESPACE}
+) {TS_CLAUSE}
 """
 
 CREATE_VEC_INDEX_SQL = f"""
@@ -103,7 +118,7 @@ CREATE VECTOR INDEX faces_embedding_idx
   ORGANIZATION NEIGHBOR PARTITIONS
   DISTANCE        COSINE
   TARGET ACCURACY 95
-  TABLESPACE      {TABLESPACE}
+  {TS_CLAUSE}
 """
 
 # ─── logging setup ───────────────────────────────────────────────────────

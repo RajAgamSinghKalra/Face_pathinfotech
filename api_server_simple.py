@@ -25,12 +25,23 @@ from torchvision import transforms
 from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
 
 # ─── Oracle / search settings ──────────────────────────────────────────
-ORACLE_DSN        = "localhost:1521/FREEPDB1"
-ORACLE_USER       = "system"
-ORACLE_PWD        = "1123"
-VECTOR_TS         = "VECTOR_TS"          # ASSM tablespace that allows VECTOR
-SIM_THR           = 0.35                 # cosine-distance threshold
-TOP_K             = 100
+ORACLE_DSN        = os.getenv("ORACLE_DSN", "localhost:1521/FREEPDB1")
+ORACLE_USER       = os.getenv("ORACLE_USER", "system")
+ORACLE_PWD        = os.getenv("ORACLE_PWD", "1123")
+
+# Resolve tablespace for the temporary query table. Default to USERS to
+# avoid placing VECTOR columns in the SYSTEM tablespace.
+_raw_ts = os.getenv("TABLESPACE")
+if _raw_ts is None:
+    VECTOR_TS = "USERS"
+else:
+    _raw_ts = _raw_ts.strip()
+    if not _raw_ts:
+        VECTOR_TS = None
+    else:
+        VECTOR_TS = "USERS" if _raw_ts.upper() == "SYSTEM" else _raw_ts
+SIM_THR           = float(os.getenv("SIM_THR", 0.35))  # cosine-distance threshold
+TOP_K             = int(os.getenv("TOP_K", 100))
 
 ROOT_DIR   = Path(__file__).parent.resolve()
 UPLOAD_DIR = ROOT_DIR / "temp_uploads"
@@ -71,18 +82,19 @@ class OracleVectorSearch:
             SELECT tablespace_name FROM user_tables
             WHERE table_name = 'QUERY_FACE'""")
         row = self.cur.fetchone()
-        if row and row[0] != VECTOR_TS:
+        if row and VECTOR_TS and row[0] != VECTOR_TS:
             log.warning("QUERY_FACE exists in %s – recreating in %s",
                         row[0], VECTOR_TS)
             self.cur.execute("DROP TABLE query_face PURGE")
             self.con.commit()
             row = None
         if not row:
+            ts_clause = f"TABLESPACE {VECTOR_TS}" if VECTOR_TS else ""
             self.cur.execute(f"""
                 CREATE TABLE query_face (
                   id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                   embedding VECTOR(512,FLOAT32)
-                ) TABLESPACE {VECTOR_TS}""")
+                ) {ts_clause}""")
             self.con.commit()
 
     def insert_query_vector(self, vec: np.ndarray):
