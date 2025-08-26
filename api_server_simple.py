@@ -56,6 +56,20 @@ app.add_middleware(
 # Will hold functions after start-up
 pipeline: dict[str, Any] = {"ready": False}
 
+
+def resolve_tablespace(conn: oracledb.Connection, ts: str | None) -> str | None:
+    """Return a usable tablespace, avoiding SYSTEM for VECTOR data."""
+    if ts and ts.upper() != "SYSTEM":
+        return ts
+    cur = conn.cursor()
+    cur.execute("SELECT default_tablespace FROM user_users")
+    default_ts = cur.fetchone()[0]
+    cur.close()
+    if (ts or default_ts).upper() == "SYSTEM":
+        return "USERS"
+    return ts or default_ts
+
+
 # ═════════════════════════ Oracle helper ══════════════════════════════
 class OracleVectorSearch:
     """Insert ONE query vector into QUERY_FACE (VECTOR) and run search."""
@@ -64,6 +78,7 @@ class OracleVectorSearch:
                                     password=ORACLE_PWD,
                                     dsn=ORACLE_DSN)
         self.cur = self.con.cursor()
+        self.tablespace = resolve_tablespace(self.con, VECTOR_TS)
         self._ensure_query_face()
 
     def _ensure_query_face(self):
@@ -71,14 +86,14 @@ class OracleVectorSearch:
             SELECT tablespace_name FROM user_tables
             WHERE table_name = 'QUERY_FACE'""")
         row = self.cur.fetchone()
-        if row and VECTOR_TS and row[0] != VECTOR_TS:
+        if row and self.tablespace and row[0] != self.tablespace:
             log.warning("QUERY_FACE exists in %s – recreating in %s",
-                        row[0], VECTOR_TS)
+                        row[0], self.tablespace)
             self.cur.execute("DROP TABLE query_face PURGE")
             self.con.commit()
             row = None
         if not row:
-            ts_clause = f"TABLESPACE {VECTOR_TS}" if VECTOR_TS else ""
+            ts_clause = f"TABLESPACE {self.tablespace}" if self.tablespace else ""
             self.cur.execute(f"""
                 CREATE TABLE query_face (
                   id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

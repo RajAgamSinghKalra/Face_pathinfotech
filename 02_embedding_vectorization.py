@@ -78,11 +78,8 @@ ORACLE_PWD  = os.getenv("ORACLE_PWD",  "1123")
 TABLESPACE  = os.getenv("TABLESPACE")
 BATCH_SIZE  = 1_000
 
-# Build optional TABLESPACE clause once
-TS_CLAUSE = f"TABLESPACE {TABLESPACE}" if TABLESPACE else ""
-
-# ─── DDL (unchanged, includes landmark cols) ─────────────────────────────
-CREATE_TABLE_SQL = f"""
+# ─── DDL templates (include landmark cols) ───────────────────────────
+CREATE_TABLE_SQL = """
 CREATE TABLE faces (
   id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   original_image       VARCHAR2(500),
@@ -98,16 +95,16 @@ CREATE TABLE faces (
   landmarks_106        CLOB,
   processing_timestamp TIMESTAMP,
   metadata             CLOB
-) {TS_CLAUSE}
+) {ts_clause}
 """
 
-CREATE_VEC_INDEX_SQL = f"""
+CREATE_VEC_INDEX_SQL = """
 CREATE VECTOR INDEX faces_embedding_idx
   ON faces (embedding)
   ORGANIZATION NEIGHBOR PARTITIONS
   DISTANCE        COSINE
   TARGET ACCURACY 95
-  {TS_CLAUSE}
+  {ts_clause}
 """
 
 # ─── logging setup ───────────────────────────────────────────────────────
@@ -123,13 +120,29 @@ logging.basicConfig(
 )
 log = logging.getLogger("embed")
 
-# ─── Oracle helper (unchanged) ───────────────────────────────────────────
+
+def resolve_tablespace(conn: oracledb.Connection, ts: str | None) -> str | None:
+    """Return a usable tablespace, falling back from SYSTEM to USERS."""
+    if ts and ts.upper() != "SYSTEM":
+        return ts
+    cur = conn.cursor()
+    cur.execute("SELECT default_tablespace FROM user_users")
+    default_ts = cur.fetchone()[0]
+    cur.close()
+    if (ts or default_ts).upper() == "SYSTEM":
+        return "USERS"
+    return ts or default_ts
+
+
+# ─── Oracle helper ──────────────────────────────────────────────────────
 class OracleFaces:
     def __init__(self, reset: bool):
         self.conn = oracledb.connect(user=ORACLE_USER,
                                      password=ORACLE_PWD,
                                      dsn=ORACLE_DSN)
         self.cur  = self.conn.cursor()
+        self.tablespace = resolve_tablespace(self.conn, TABLESPACE)
+        self.ts_clause  = f"TABLESPACE {self.tablespace}" if self.tablespace else ""
         if reset:
             self.cur.execute("BEGIN "
                              "EXECUTE IMMEDIATE 'DROP INDEX faces_embedding_idx'; "
@@ -143,12 +156,14 @@ class OracleFaces:
             "SELECT COUNT(*) FROM user_tables WHERE table_name='FACES'")
         if self.cur.fetchone()[0] == 0:
             log.info("Creating FACES table …")
-            self.cur.execute(CREATE_TABLE_SQL); self.conn.commit()
+            self.cur.execute(CREATE_TABLE_SQL.format(ts_clause=self.ts_clause))
+            self.conn.commit()
         self.cur.execute(
             "SELECT COUNT(*) FROM user_indexes WHERE index_name='FACES_EMBEDDING_IDX'")
         if self.cur.fetchone()[0] == 0:
             log.info("Creating VECTOR index …")
-            self.cur.execute(CREATE_VEC_INDEX_SQL); self.conn.commit()
+            self.cur.execute(CREATE_VEC_INDEX_SQL.format(ts_clause=self.ts_clause))
+            self.conn.commit()
 
     def insert(self, meta: Dict[str,Any],
                vec: np.ndarray, img_bytes: bytes):
