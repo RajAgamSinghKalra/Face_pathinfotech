@@ -48,7 +48,7 @@ BLOB_COL           = "EMBEDDING_BLOB"
 VECTOR_IDX         = "FACES_EMBEDDING_IDX"
 HELPER_TABLE       = "FACES_VEC_IDX"
 HELPER_IDX         = "FVI_HELPER_IDX"
-HELPER_TS          = "VECTOR_TS"      # keep with ASSM
+HELPER_TS          = os.getenv("TABLESPACE")  # optional tablespace
 
 ROOT       = Path(r"C:\Users\Agam\Downloads\intern\pathinfotech\face")
 INDEX_DIR  = ROOT / "indexes"; INDEX_DIR.mkdir(exist_ok=True)
@@ -152,8 +152,9 @@ def main():
     ap.add_argument("--faiss", metavar="FILE",
                     help="write FAISS index (HNSW-Flat) to FILE.faiss")
     ap.add_argument("--tablespace", metavar="TS",
-                    help="override tablespace for VECTOR index")
+                    help="tablespace for VECTOR index (optional)")
     args = ap.parse_args()
+    args.tablespace = args.tablespace or os.getenv("TABLESPACE")
 
     want_oracle = args.oracle or args.faiss is None
     want_faiss  = bool(args.faiss)
@@ -163,7 +164,7 @@ def main():
     # Oracle VECTOR index
     if want_oracle:
         if has_vector:
-            ts = args.tablespace or "VECTOR_TS"
+            ts = args.tablespace
             create_vector_index(cur, FACES_TABLE, VECTOR_COL,
                                 VECTOR_IDX, ts)
         else:
@@ -171,11 +172,12 @@ def main():
             log.warning("No VECTOR column; creating helper table/index …")
             ids, vecs = fetch_embeddings(cur, via_blob=True)
             sql_drop_table(cur, HELPER_TABLE)
+            ts_clause = f"TABLESPACE {HELPER_TS}" if HELPER_TS else ""
             cur.execute(f"""
                 CREATE TABLE {HELPER_TABLE} (
                     id        NUMBER PRIMARY KEY,
                     embedding VECTOR(512,FLOAT32)
-                ) TABLESPACE {HELPER_TS}""")
+                ) {ts_clause}""")
             cur.executemany(
                 f"INSERT /*+ APPEND */ INTO {HELPER_TABLE}(id,embedding) "
                 f"VALUES (:1,:2)",
