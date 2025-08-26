@@ -74,11 +74,12 @@ ORACLE_DSN  = os.getenv("ORACLE_DSN",  "localhost:1521/FREEPDB1")
 ORACLE_USER = os.getenv("ORACLE_USER", "system")
 ORACLE_PWD  = os.getenv("ORACLE_PWD",  "1123")
 
-TABLESPACE  = "VECTOR_TS"
+# Optional Oracle tablespace for new objects; resolved later to avoid SYSTEM
+TABLESPACE_ENV = os.getenv("TABLESPACE")
 BATCH_SIZE  = 1_000
 
-# ─── DDL (unchanged, includes landmark cols) ─────────────────────────────
-CREATE_TABLE_SQL = f"""
+# ─── DDL templates (includes landmark cols) ─────────────────────────────
+CREATE_TABLE_SQL_TMPL = """
 CREATE TABLE faces (
   id NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   original_image       VARCHAR2(500),
@@ -94,17 +95,29 @@ CREATE TABLE faces (
   landmarks_106        CLOB,
   processing_timestamp TIMESTAMP,
   metadata             CLOB
-) TABLESPACE {TABLESPACE}
+) {ts_clause}
 """
 
-CREATE_VEC_INDEX_SQL = f"""
+CREATE_VEC_INDEX_TMPL = """
 CREATE VECTOR INDEX faces_embedding_idx
   ON faces (embedding)
   ORGANIZATION NEIGHBOR PARTITIONS
   DISTANCE        COSINE
   TARGET ACCURACY 95
-  TABLESPACE      {TABLESPACE}
+  {ts_clause}
 """
+
+
+def _resolve_tablespace(cur, ts_env: str | None) -> str | None:
+    """Return a usable tablespace, avoiding SYSTEM if no env override."""
+    if ts_env:
+        return ts_env
+    try:
+        cur.execute("SELECT default_tablespace FROM user_users")
+        ts = cur.fetchone()[0]
+        return "USERS" if ts and ts.upper() == "SYSTEM" else ts
+    except Exception:
+        return None
 
 # ─── logging setup ───────────────────────────────────────────────────────
 LOG_DIR = Path("logs"); LOG_DIR.mkdir(exist_ok=True)
@@ -126,6 +139,7 @@ class OracleFaces:
                                      password=ORACLE_PWD,
                                      dsn=ORACLE_DSN)
         self.cur  = self.conn.cursor()
+        self.tablespace = _resolve_tablespace(self.cur, TABLESPACE_ENV)
         if reset:
             self.cur.execute("BEGIN "
                              "EXECUTE IMMEDIATE 'DROP INDEX faces_embedding_idx'; "
@@ -135,16 +149,20 @@ class OracleFaces:
         self._ensure_schema()
 
     def _ensure_schema(self):
+        ts_clause = f"TABLESPACE {self.tablespace}" if self.tablespace else ""
+        create_table_sql = CREATE_TABLE_SQL_TMPL.format(ts_clause=ts_clause)
+        create_vec_index_sql = CREATE_VEC_INDEX_TMPL.format(ts_clause=ts_clause)
+
         self.cur.execute(
             "SELECT COUNT(*) FROM user_tables WHERE table_name='FACES'")
         if self.cur.fetchone()[0] == 0:
             log.info("Creating FACES table …")
-            self.cur.execute(CREATE_TABLE_SQL); self.conn.commit()
+            self.cur.execute(create_table_sql); self.conn.commit()
         self.cur.execute(
             "SELECT COUNT(*) FROM user_indexes WHERE index_name='FACES_EMBEDDING_IDX'")
         if self.cur.fetchone()[0] == 0:
             log.info("Creating VECTOR index …")
-            self.cur.execute(CREATE_VEC_INDEX_SQL); self.conn.commit()
+            self.cur.execute(create_vec_index_sql); self.conn.commit()
 
     def insert(self, meta: Dict[str,Any],
                vec: np.ndarray, img_bytes: bytes):

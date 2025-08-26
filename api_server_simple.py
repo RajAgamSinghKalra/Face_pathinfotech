@@ -25,16 +25,28 @@ from torchvision import transforms
 from facenet_pytorch import InceptionResnetV1, fixed_image_standardization
 
 # ─── Oracle / search settings ──────────────────────────────────────────
-ORACLE_DSN        = "localhost:1521/FREEPDB1"
-ORACLE_USER       = "system"
-ORACLE_PWD        = "1123"
-VECTOR_TS         = "VECTOR_TS"          # ASSM tablespace that allows VECTOR
-SIM_THR           = 0.35                 # cosine-distance threshold
-TOP_K             = 100
+ORACLE_DSN        = os.getenv("ORACLE_DSN", "localhost:1521/FREEPDB1")
+ORACLE_USER       = os.getenv("ORACLE_USER", "system")
+ORACLE_PWD        = os.getenv("ORACLE_PWD", "1123")
+TABLESPACE_ENV    = os.getenv("TABLESPACE")          # optional tablespace
+SIM_THR           = float(os.getenv("SIM_THR", 0.35))  # cosine-distance threshold
+TOP_K             = int(os.getenv("TOP_K", 100))
 
 ROOT_DIR   = Path(__file__).parent.resolve()
 UPLOAD_DIR = ROOT_DIR / "temp_uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+def resolve_tablespace(cur, ts_env: str | None) -> str | None:
+    """Return a usable tablespace, avoiding SYSTEM when unset."""
+    if ts_env:
+        return ts_env
+    try:
+        cur.execute("SELECT default_tablespace FROM user_users")
+        ts = cur.fetchone()[0]
+        return "USERS" if ts and ts.upper() == "SYSTEM" else ts
+    except Exception:
+        return None
 
 # ─── logging ───────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO,
@@ -64,25 +76,26 @@ class OracleVectorSearch:
                                     password=ORACLE_PWD,
                                     dsn=ORACLE_DSN)
         self.cur = self.con.cursor()
+        self.tablespace = resolve_tablespace(self.cur, TABLESPACE_ENV)
         self._ensure_query_face()
 
     def _ensure_query_face(self):
-        self.cur.execute("""
-            SELECT tablespace_name FROM user_tables
-            WHERE table_name = 'QUERY_FACE'""")
+        self.cur.execute(
+            "SELECT tablespace_name FROM user_tables WHERE table_name = 'QUERY_FACE'")
         row = self.cur.fetchone()
-        if row and row[0] != VECTOR_TS:
+        if row and self.tablespace and row[0] != self.tablespace:
             log.warning("QUERY_FACE exists in %s – recreating in %s",
-                        row[0], VECTOR_TS)
+                        row[0], self.tablespace)
             self.cur.execute("DROP TABLE query_face PURGE")
             self.con.commit()
             row = None
         if not row:
+            ts_clause = f"TABLESPACE {self.tablespace}" if self.tablespace else ""
             self.cur.execute(f"""
                 CREATE TABLE query_face (
                   id        NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                   embedding VECTOR(512,FLOAT32)
-                ) TABLESPACE {VECTOR_TS}""")
+                ) {ts_clause}""")
             self.con.commit()
 
     def insert_query_vector(self, vec: np.ndarray):
