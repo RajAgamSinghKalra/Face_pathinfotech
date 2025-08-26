@@ -48,12 +48,24 @@ BLOB_COL           = "EMBEDDING_BLOB"
 VECTOR_IDX         = "FACES_EMBEDDING_IDX"
 HELPER_TABLE       = "FACES_VEC_IDX"
 HELPER_IDX         = "FVI_HELPER_IDX"
-HELPER_TS          = os.getenv("TABLESPACE")  # optional tablespace
 
 ROOT       = Path(r"C:\Users\Agam\Downloads\intern\pathinfotech\face")
 INDEX_DIR  = ROOT / "indexes"; INDEX_DIR.mkdir(exist_ok=True)
 
 # ═════════════════════════════ helper functions ══════════════════════════════
+def resolve_tablespace(conn: oracledb.Connection, ts: str | None) -> str | None:
+    """Return a usable tablespace, falling back from SYSTEM to USERS."""
+    if ts and ts.upper() != "SYSTEM":
+        return ts
+    cur = conn.cursor()
+    cur.execute("SELECT default_tablespace FROM user_users")
+    default_ts = cur.fetchone()[0]
+    cur.close()
+    if (ts or default_ts).upper() == "SYSTEM":
+        return "USERS"
+    return ts or default_ts
+
+
 def db_open():
     conn = oracledb.connect(user=ORACLE_USER,
                             password=ORACLE_PWD,
@@ -154,17 +166,17 @@ def main():
     ap.add_argument("--tablespace", metavar="TS",
                     help="tablespace for VECTOR index (optional)")
     args = ap.parse_args()
-    args.tablespace = args.tablespace or os.getenv("TABLESPACE")
 
     want_oracle = args.oracle or args.faiss is None
     want_faiss  = bool(args.faiss)
 
     conn, cur, has_vector = db_open()
+    preferred_ts = args.tablespace or os.getenv("TABLESPACE")
+    ts = resolve_tablespace(conn, preferred_ts)
 
     # Oracle VECTOR index
     if want_oracle:
         if has_vector:
-            ts = args.tablespace
             create_vector_index(cur, FACES_TABLE, VECTOR_COL,
                                 VECTOR_IDX, ts)
         else:
@@ -172,7 +184,7 @@ def main():
             log.warning("No VECTOR column; creating helper table/index …")
             ids, vecs = fetch_embeddings(cur, via_blob=True)
             sql_drop_table(cur, HELPER_TABLE)
-            ts_clause = f"TABLESPACE {HELPER_TS}" if HELPER_TS else ""
+            ts_clause = f"TABLESPACE {ts}" if ts else ""
             cur.execute(f"""
                 CREATE TABLE {HELPER_TABLE} (
                     id        NUMBER PRIMARY KEY,
@@ -184,7 +196,7 @@ def main():
                 [(int(i), v.tolist()) for i, v in zip(ids, vecs)])
             conn.commit()
             create_vector_index(cur, HELPER_TABLE, VECTOR_COL,
-                                HELPER_IDX, HELPER_TS)
+                                HELPER_IDX, ts)
 
     # FAISS build (optional)
     if want_faiss:
