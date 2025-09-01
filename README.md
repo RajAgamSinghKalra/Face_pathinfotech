@@ -91,6 +91,31 @@ python 04_query_similarity_search.py --image path/to/query.jpg
 python 05_apex_rest_api.py
 ```
 
+### 4. Run Backend and Web Frontend Locally
+
+To work with the full application on your laptop, start the API backend and the Next.js web interface:
+
+1. **Backend**
+   ```bash
+   # Install Python dependencies if not already done
+   pip install -r requirements.txt
+
+   # Ensure your local Oracle 23ai instance is running
+   # Override defaults with ORACLE_DSN/ORACLE_USER/ORACLE_PWD if needed
+
+   # Start the FastAPI server
+   python start_backend.py
+   ```
+   The API will be available at `http://localhost:8000`.
+
+2. **Web Frontend**
+   ```bash
+   cd facefindr
+   npm install
+   npm run dev
+   ```
+   Then open `http://localhost:3000` in your browser. The web app will communicate with the locally running backend.
+
 ## 📁 Script Descriptions
 
 ### Script 1: `01_face_detection_cropping.py`
